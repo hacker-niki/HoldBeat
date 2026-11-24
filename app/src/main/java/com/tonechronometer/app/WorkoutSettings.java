@@ -22,6 +22,10 @@ final class WorkoutSettings {
         return prefs.getBoolean("stopwatch", false);
     }
 
+    boolean keepScreenOn() {
+        return prefs.getBoolean("keep_screen_on", true);
+    }
+
     void setPrecision(int digits) {
         prefs.edit().putInt("fraction_digits", digits).apply();
     }
@@ -32,5 +36,9 @@ final class WorkoutSettings {
 
     void setStopwatch(boolean enabled) {
         prefs.edit().putBoolean("stopwatch", enabled).apply();
+    }
+
+    void setKeepScreenOn(boolean enabled) {
+        prefs.edit().putBoolean("keep_screen_on", enabled).apply();
     }
 }

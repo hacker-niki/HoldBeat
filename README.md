@@ -6,7 +6,7 @@ HoldBeat is an Android timer for planks, wall sits, and other static holds. Set 
 
 <p>
   <img src="docs/images/timer.png" width="260" alt="HoldBeat workout timer">
-  <img src="docs/images/settings.png" width="260" alt="Timer precision, preparation time, and mode settings">
+  <img src="docs/images/settings.png" width="260" alt="HoldBeat settings with Keep screen on enabled">
 </p>
 
 ## During a hold
@@ -15,6 +15,7 @@ HoldBeat is an Android timer for planks, wall sits, and other static holds. Set 
 - **Stopwatch** counts up, sounds once at the target, and keeps going. Tap **Stop hold** to see how long you held the position.
 - **Preparation time** gives you 3, 5, or 10 seconds to get into position. A short start tone marks the beginning of the hold. Preparation is off by default.
 - **Display precision** lets you choose whole seconds, tenths, hundredths, or milliseconds. The settings screen previews the format. The dial refreshes at the screen’s cadence.
+- **Keep screen on** is enabled by default while HoldBeat is visible. Turn it off in Settings to use your phone’s usual screen timeout.
 
 Use **Test sound** to check the volume before starting. The app remembers your duration and settings. The interface follows the device language and supports English and Russian.
 

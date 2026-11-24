@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import java.util.Locale;
@@ -21,8 +22,16 @@ public final class SettingsActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_settings);
-        ScreenInsets.apply(this, findViewById(R.id.settings_screen));
+        View screen = findViewById(R.id.settings_screen);
+        ScreenInsets.apply(this, screen);
         settings = new WorkoutSettings(this);
+        Switch keepScreenOn = findViewById(R.id.keep_screen_on);
+        keepScreenOn.setChecked(settings.keepScreenOn());
+        screen.setKeepScreenOn(keepScreenOn.isChecked());
+        keepScreenOn.setOnCheckedChangeListener((button, checked) -> {
+            settings.setKeepScreenOn(checked);
+            screen.setKeepScreenOn(checked);
+        });
         findViewById(R.id.settings_back).setOnClickListener(v -> finish());
         findViewById(R.id.next_hold_hint).setVisibility(
                 getIntent().getBooleanExtra(EXTRA_ACTIVE, false) ? View.VISIBLE : View.GONE);

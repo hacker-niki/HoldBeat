@@ -27,6 +27,7 @@
     <string name="no_alarm_settings">В настройках Android разрешите HoldBeat использовать будильники и напоминания.</string>
     <string name="minutes_and_seconds">%1$s %2$s</string>
     <string name="settings">Настройки</string>
+    <string name="keep_screen_on">Не выключать экран</string>
     <string name="back">Назад</string>
     <string name="precision">Точность отображения</string>
     <string name="precision_whole">Целые секунды</string>

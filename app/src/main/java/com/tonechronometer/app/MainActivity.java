@@ -87,6 +87,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        findViewById(R.id.screen).setKeepScreenOn(settings.keepScreenOn());
         precision = settings.precision();
         preferredStopwatch = settings.stopwatch();
         refresh();
