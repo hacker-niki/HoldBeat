@@ -55,18 +55,23 @@ public final class SettingsActivity extends Activity {
                     getResources().getQuantityString(R.plurals.seconds_count, seconds, seconds);
             if (seconds == settings.prepSeconds()) selectedPrep = i;
         }
-        String[] modes = {getString(R.string.countdown), getString(R.string.stopwatch)};
+        String[] modes = {getString(R.string.countdown), getString(R.string.stopwatch), getString(R.string.sets_mode)};
         bind(R.id.precision_setting, R.string.precision, precisions, digits);
         bind(R.id.prep_setting, R.string.preparation, prepOptions, selectedPrep);
-        bind(R.id.mode_setting, R.string.mode, modes, settings.stopwatch() ? 1 : 0);
+        bind(R.id.mode_setting, R.string.mode, modes, settings.mode().ordinal());
 
         // Use the same locale and decimal separator as the dial.
         Locale locale = getResources().getConfiguration().getLocales().get(0);
         String preview = String.format(locale, "%02d:%02d", 0, 12)
                 + TimerDial.fractionText(345, digits, locale);
         ((TextView) findViewById(R.id.precision_preview)).setText(preview);
-        ((TextView) findViewById(R.id.mode_summary)).setText(
-                settings.stopwatch() ? R.string.stopwatch_summary : R.string.countdown_summary);
+        int summary;
+        switch (settings.mode()) {
+            case SETS: summary = R.string.sets_summary; break;
+            case STOPWATCH: summary = R.string.stopwatch_summary; break;
+            default: summary = R.string.countdown_summary;
+        }
+        ((TextView) findViewById(R.id.mode_summary)).setText(summary);
     }
 
     private void bind(int rowId, int titleId, String[] choices, int selected) {
@@ -84,7 +89,7 @@ public final class SettingsActivity extends Activity {
                         } else if (rowId == R.id.prep_setting) {
                             settings.setPrepSeconds(PREP_SECONDS[choice]);
                         } else {
-                            settings.setStopwatch(choice == 1);
+                            settings.setMode(WorkoutSettings.Mode.values()[choice]);
                         }
                         dialog.dismiss();
                         render();

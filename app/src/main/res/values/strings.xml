@@ -57,4 +57,22 @@
     <string name="elapsed_description">%1$s. %2$s elapsed.</string>
     <string name="precise_description">%1$s. %2$s. %3$s.</string>
     <string name="preset_seconds">%d s</string>
+    <string name="sets_mode">Sets</string>
+    <string name="sets_summary">Work and rest alternate automatically. Edit your workout plan on the timer screen.</string>
+    <string name="workout_plan">Workout plan</string>
+    <string name="edit_plan">Edit</string>
+    <string name="save_set_plan">Set plan</string>
+    <string name="work">Work</string>
+    <string name="rest">Rest</string>
+    <string name="work_seconds">Exercise (seconds)</string>
+    <string name="rest_seconds">Rest (seconds)</string>
+    <string name="set_count">Number of sets</string>
+    <string name="number_range">Enter a number from %1$d to %2$d.</string>
+    <string name="set_progress">Set %1$d of %2$d</string>
+    <string name="rest_paused">Rest paused</string>
+    <string name="work_paused">Work paused</string>
+    <string name="workout_complete">Workout complete</string>
+    <string name="start_workout">Start workout</string>
+    <string name="pause_workout">Pause workout</string>
+    <string name="resume_workout">Resume workout</string>
 </resources>

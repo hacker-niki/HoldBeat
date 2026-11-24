@@ -55,17 +55,88 @@ class Emulator:
         self.tap(row)
         self.tap(value)
 
-    def timer_state(self):
+    def timer_progress(self):
         raw = self.shell("run-as", PACKAGE, "cat", "shared_prefs/countdown.xml")
-        return ET.fromstring(raw).findtext("string[@name='state']")
+        prefs = ET.fromstring(raw)
+        step = prefs.find("int[@name='setsStep']")
+        return prefs.findtext("string[@name='state']"), int(step.get("value")) if step is not None else None
 
-    def wait_for_state(self, expected, timeout):
+    def wait_for_state(self, expected, timeout, step=None):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if self.timer_state() == expected:
+            state, current_step = self.timer_progress()
+            if state == expected and (step is None or step == current_step):
                 return
             time.sleep(0.1)
-        raise AssertionError(f"Expected {expected}, got {self.timer_state()}")
+        raise AssertionError(f"Expected {expected} (step {step}), got {self.timer_progress()}")
+
+    def replace_number(self, field, number):
+        self.tap(field)
+        self.shell("input", "keyevent", "KEYCODE_MOVE_END", *(["KEYCODE_DEL"] * 4))
+        self.shell("input", "text", str(number))
+
+    def save_set_plan(self, work, rest, count):
+        for field, value in zip(("work_seconds", "rest_seconds", "set_count"), (work, rest, count)):
+            self.replace_number(field, value)
+        self.tap("android:id/button1")
+
+    def kill_background_process(self):
+        # Force-stop would also cancel the alarms under test.
+        pid = self.shell("pidof", PACKAGE)
+        assert pid.isdecimal(), f"Unexpected app process ID: {pid}"
+        self.shell("run-as", PACKAGE, "kill", "-9", pid)
+        deadline = time.monotonic() + 2
+        while PACKAGE in self.shell("ps", "-A", "-o", "NAME").splitlines():
+            if time.monotonic() >= deadline:
+                raise AssertionError("Background app process did not exit")
+            time.sleep(0.1)
+
+
+def run_sets(device):
+    device.tap("settings")
+    device.select("mode_setting", "Sets")
+    device.tap("settings_back")
+    device.tap("custom")
+    fields = ("work_seconds", "rest_seconds", "set_count")
+    assert [device.node(field).get("text") for field in fields] == ["30", "15", "3"]
+    device.save_set_plan(8, 14, 2)
+    device.tap("Start workout")
+    device.wait_for_state("RUNNING", 2, step=0)
+    device.wait_for_state("RUNNING", 11, step=1)
+    device.tap("Pause workout")
+    device.wait_for_state("PAUSED", 2, step=1)
+    paused = device.node("dial").get("content-desc", "")
+    assert "rest" in paused.lower(), paused
+    time.sleep(1.1)
+    assert device.node("dial").get("content-desc") == paused, "Paused rest kept advancing"
+    device.tap("Resume workout")
+    device.wait_for_state("RUNNING", 2, step=1)
+    device.shell("input", "keyevent", "KEYCODE_HOME")
+    device.shell("input", "keyevent", "KEYCODE_SLEEP")
+    device.kill_background_process()
+    device.wait_for_state("RUNNING", 17, step=2)
+    device.wait_for_state("FINISHED", 11)
+    assert "mWakefulness=Asleep" in device.shell("dumpsys", "power"), "Device woke during the workout"
+    device.launch()
+    print("PASS: work, rest pause/resume, locked next set after process death, finish without final rest")
+
+
+def run_short_rest(device):
+    device.tap("custom")
+    device.save_set_plan(11, 2, 2)
+    device.tap("Start workout")
+    device.wait_for_state("RUNNING", 2, step=0)
+    device.shell("input", "keyevent", "KEYCODE_HOME")
+    device.shell("input", "keyevent", "KEYCODE_SLEEP")
+    device.kill_background_process()
+    device.wait_for_state("RUNNING", 14, step=1)
+    # The second work alarm must already be registered. A new exact alarm scheduled
+    # only at the start of this two-second rest can be deferred by Android.
+    device.kill_background_process()
+    device.wait_for_state("RUNNING", 3.5, step=2)
+    device.wait_for_state("FINISHED", 14)
+    device.launch()
+    print("PASS: a two-second rest stays on time after the app process exits twice")
 
 
 def run(device):
@@ -75,6 +146,8 @@ def run(device):
         raise ValueError("Install the debug APK first")
     device.shell("pm", "clear", PACKAGE)
     device.launch()
+    run_sets(device)
+    run_short_rest(device)
 
     device.tap("settings")
     for precision, sample in (("Tenths of a second", "00:12.3"),
@@ -98,15 +171,7 @@ def run(device):
     device.wait_for_state("PREPARING", 1)
     device.shell("input", "keyevent", "KEYCODE_HOME")
     device.shell("input", "keyevent", "KEYCODE_SLEEP")
-    # Kill only this debug app after leaving its Activity. Force-stop would cancel its alarms.
-    pid = device.shell("pidof", PACKAGE)
-    assert pid.isdecimal(), f"Unexpected app process ID: {pid}"
-    device.shell("run-as", PACKAGE, "kill", "-9", pid)
-    until_exit = time.monotonic() + 2
-    while PACKAGE in device.shell("ps", "-A", "-o", "NAME").splitlines():
-        if time.monotonic() >= until_exit:
-            raise AssertionError("App process still running during preparation")
-        time.sleep(0.1)
+    device.kill_background_process()
     device.wait_for_state("RUNNING", 13)
     device.wait_for_state("OVERTIME", 19)
     device.launch()

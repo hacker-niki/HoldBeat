@@ -36,6 +36,8 @@ public final class TimerDial extends View {
     private int lastStatus;
     private int lastCaption;
     private int lastPrecision = -1;
+    private int lastSet = -1;
+    private int lastCount = -1;
     private float fraction;
 
     public TimerDial(Context context, AttributeSet attrs) {
@@ -49,23 +51,30 @@ public final class TimerDial extends View {
         symbols = DecimalFormatSymbols.getInstance(locale);
     }
 
-    void show(WorkoutTimer.Snapshot snapshot, boolean stopwatch, int precision) {
+    void show(WorkoutTimer.Snapshot snapshot, boolean stopwatch, int precision, int setCount) {
         boolean elapsed = stopwatch && !snapshot.preparing;
         long millis = elapsed ? snapshot.elapsedMs : snapshot.remainingMs;
         int quantum = QUANTUM_MS[precision];
         long rounded = (elapsed ? millis / quantum : (millis + quantum - 1) / quantum) * quantum;
         long seconds = rounded / 1000;
-        int captionId = snapshot.preparing ? R.string.starts_in : elapsed ? R.string.elapsed : R.string.remaining;
-        int statusId = statusLabel(snapshot.state, stopwatch);
+        int captionId = setCount > 0 ? R.string.set_progress
+                : snapshot.preparing ? R.string.starts_in : elapsed ? R.string.elapsed : R.string.remaining;
+        int setNumber = snapshot.state == WorkoutTimer.State.IDLE ? 1 : snapshot.setNumber;
+        int statusId = statusLabel(snapshot, stopwatch, setCount > 0);
         if (seconds != lastSeconds) {
             time = String.format(locale, "%02d:%02d", seconds / 60, seconds % 60);
         }
         fillFraction(decimals, (int) (rounded % 1000), precision, symbols);
-        if (statusId != lastStatus || captionId != lastCaption || precision != lastPrecision || seconds != lastSeconds) {
+        if (statusId != lastStatus || captionId != lastCaption || precision != lastPrecision
+                || seconds != lastSeconds || setNumber != lastSet || setCount != lastCount) {
             label = getContext().getString(statusId);
             status = label.toUpperCase(locale);
-            caption = getContext().getString(captionId);
-            if (precision == 0) {
+            caption = setCount > 0 ? getContext().getString(captionId, setNumber, setCount)
+                    : getContext().getString(captionId);
+            if (precision == 0 && setCount > 0) {
+                setContentDescription(getContext().getString(R.string.precise_description,
+                        label, caption, spokenTime(seconds)));
+            } else if (precision == 0) {
                 int description = elapsed ? R.string.elapsed_description : R.string.dial_description;
                 setContentDescription(getContext().getString(description, label, spokenTime(seconds)));
             } else {
@@ -76,19 +85,23 @@ public final class TimerDial extends View {
             lastCaption = captionId;
             lastPrecision = precision;
             lastSeconds = seconds;
+            lastSet = setNumber;
+            lastCount = setCount;
         }
-        long interval = snapshot.preparing ? snapshot.prepDurationMs : snapshot.durationMs;
+        long interval = snapshot.preparing ? snapshot.prepDurationMs : snapshot.resting ? snapshot.restMs : snapshot.durationMs;
         fraction = interval > 0 ? Math.min(1f, (float) millis / interval) : 0;
         invalidate();
     }
 
-    private int statusLabel(WorkoutTimer.State state, boolean stopwatch) {
-        switch (state) {
+    private int statusLabel(WorkoutTimer.Snapshot snapshot, boolean stopwatch, boolean sets) {
+        switch (snapshot.state) {
             case PREPARING: return R.string.preparing;
-            case RUNNING: return R.string.running;
-            case PAUSED: return R.string.paused;
+            case RUNNING: return sets ? (snapshot.resting ? R.string.rest : R.string.work) : R.string.running;
+            case PAUSED:
+                if (sets && !snapshot.preparing) return snapshot.resting ? R.string.rest_paused : R.string.work_paused;
+                return R.string.paused;
             case OVERTIME: return R.string.target_reached;
-            case FINISHED: return stopwatch ? R.string.stopped : R.string.finished;
+            case FINISHED: return sets ? R.string.workout_complete : stopwatch ? R.string.stopped : R.string.finished;
             default: return R.string.ready;
         }
     }

@@ -18,21 +18,27 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.Locale;
+
+import com.tonechronometer.app.WorkoutSettings.Mode;
+
 public final class MainActivity extends Activity {
     private static final int[] PRESET_SECONDS = {15, 30, 45, 60};
     private final Button[] presets = new Button[PRESET_SECONDS.length];
     private WorkoutSettings settings;
     private int precision;
-    private boolean preferredStopwatch;
+    private Mode preferredMode;
+    private int preferredSetCount;
+    private long preferredRestMs;
     private WorkoutTimer timer;
     private TimerDial dial;
     private Button primary;
     private ImageButton secondary;
-    private View custom;
+    private Button custom;
     private View preview;
     private WorkoutTimer.State displayedState;
     private long displayedDuration = -1;
-    private boolean displayedStopwatch;
+    private Mode displayedMode;
     private boolean displayedPreparing;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -70,15 +76,20 @@ public final class MainActivity extends Activity {
 
         primary.setOnClickListener(v -> primaryAction());
         secondary.setOnClickListener(v -> {
-            if (canStop(displayedState, displayedStopwatch)) {
+            if (canStop(displayedState, displayedMode)) {
                 timer.pause();
             } else {
                 timer.reset();
             }
             refresh();
         });
-        custom.setOnClickListener(v -> DurationDialog.forDuration(timer.read().durationMs)
-                .show(getFragmentManager(), "duration"));
+        custom.setOnClickListener(v -> {
+            long workMs = timer.read().durationMs;
+            DurationDialog dialog = displayedMode == Mode.SETS
+                    ? DurationDialog.forSets(workMs, preferredRestMs, preferredSetCount)
+                    : DurationDialog.forDuration(workMs);
+            dialog.show(getFragmentManager(), "duration");
+        });
         preview.setOnClickListener(v -> {
             FinishTone.preview(this);
             adviseIfMuted();
@@ -89,7 +100,13 @@ public final class MainActivity extends Activity {
         super.onResume();
         findViewById(R.id.screen).setKeepScreenOn(settings.keepScreenOn());
         precision = settings.precision();
-        preferredStopwatch = settings.stopwatch();
+        preferredMode = settings.mode();
+        preferredSetCount = settings.setCount();
+        preferredRestMs = settings.restMs();
+        WorkoutTimer.Snapshot current = timer.read();
+        if (current.state == WorkoutTimer.State.FINISHED && modeFor(current) != preferredMode) {
+            timer.reset();
+        }
         refresh();
     }
 
@@ -103,8 +120,16 @@ public final class MainActivity extends Activity {
         refresh();
     }
 
+    void chooseSetPlan(long workMs, long restMs, int count) {
+        settings.setPlan(restMs, count);
+        preferredRestMs = restMs;
+        preferredSetCount = count;
+        displayedState = null;
+        chooseDuration(workMs);
+    }
+
     private void primaryAction() {
-        if (canStop(displayedState, displayedStopwatch)) {
+        if (canStop(displayedState, displayedMode)) {
             timer.stop();
         } else if (displayedState == WorkoutTimer.State.RUNNING || displayedState == WorkoutTimer.State.PREPARING) {
             timer.pause();
@@ -114,7 +139,11 @@ public final class MainActivity extends Activity {
                 return;
             }
             try {
-                timer.start(settings.prepSeconds(), preferredStopwatch);
+                if (preferredMode == Mode.SETS) {
+                    timer.startSets(settings.prepSeconds(), preferredRestMs, preferredSetCount);
+                } else {
+                    timer.start(settings.prepSeconds(), preferredMode == Mode.STOPWATCH);
+                }
                 adviseIfMuted();
             } catch (SecurityException permissionChanged) {
                 showAlarmSettings();
@@ -149,14 +178,15 @@ public final class MainActivity extends Activity {
     private void refresh() {
         dial.removeCallbacks(tick);
         WorkoutTimer.Snapshot snapshot = timer.read();
-        boolean stopwatch = snapshot.state == WorkoutTimer.State.IDLE ? preferredStopwatch : snapshot.stopwatch;
-        dial.show(snapshot, stopwatch, precision);
+        Mode mode = modeFor(snapshot);
+        int count = snapshot.state == WorkoutTimer.State.IDLE ? preferredSetCount : snapshot.setCount;
+        dial.show(snapshot, mode == Mode.STOPWATCH, precision, mode == Mode.SETS ? count : 0);
         if (snapshot.state != displayedState || snapshot.durationMs != displayedDuration
-                || stopwatch != displayedStopwatch || snapshot.preparing != displayedPreparing) {
-            renderControls(snapshot, stopwatch);
+                || mode != displayedMode || snapshot.preparing != displayedPreparing) {
+            renderControls(snapshot, mode);
             displayedState = snapshot.state;
             displayedDuration = snapshot.durationMs;
-            displayedStopwatch = stopwatch;
+            displayedMode = mode;
             displayedPreparing = snapshot.preparing;
         }
         if (isTicking(snapshot.state)) {
@@ -174,14 +204,35 @@ public final class MainActivity extends Activity {
         return state == WorkoutTimer.State.PREPARING || state == WorkoutTimer.State.RUNNING || state == WorkoutTimer.State.OVERTIME;
     }
 
-    private boolean canStop(WorkoutTimer.State state, boolean stopwatch) {
-        return stopwatch && (state == WorkoutTimer.State.RUNNING || state == WorkoutTimer.State.OVERTIME);
+    private Mode modeFor(WorkoutTimer.Snapshot snapshot) {
+        if (snapshot.state == WorkoutTimer.State.IDLE) return preferredMode;
+        if (snapshot.sets) return Mode.SETS;
+        return snapshot.stopwatch ? Mode.STOPWATCH : Mode.COUNTDOWN;
     }
 
-    private void renderControls(WorkoutTimer.Snapshot snapshot, boolean stopwatch) {
+    private boolean canStop(WorkoutTimer.State state, Mode mode) {
+        return mode == Mode.STOPWATCH && (state == WorkoutTimer.State.RUNNING || state == WorkoutTimer.State.OVERTIME);
+    }
+
+    private void renderControls(WorkoutTimer.Snapshot snapshot, Mode mode) {
         boolean editable = snapshot.state == WorkoutTimer.State.IDLE || snapshot.state == WorkoutTimer.State.FINISHED;
-        boolean stopAction = canStop(snapshot.state, stopwatch);
-        ((TextView) findViewById(R.id.duration_label)).setText(stopwatch ? R.string.target_duration : R.string.duration);
+        boolean stopAction = canStop(snapshot.state, mode);
+        boolean stopwatch = mode == Mode.STOPWATCH;
+        boolean sets = mode == Mode.SETS;
+        int durationLabel = sets ? R.string.workout_plan : stopwatch ? R.string.target_duration : R.string.duration;
+        ((TextView) findViewById(R.id.duration_label)).setText(durationLabel);
+        custom.setText(sets ? R.string.edit_plan : R.string.custom);
+        findViewById(R.id.presets).setVisibility(sets ? View.GONE : View.VISIBLE);
+        findViewById(R.id.set_plan).setVisibility(sets ? View.VISIBLE : View.GONE);
+        if (sets) {
+            boolean idle = snapshot.state == WorkoutTimer.State.IDLE;
+            long rest = idle ? preferredRestMs : snapshot.restMs;
+            int count = idle ? preferredSetCount : snapshot.setCount;
+            Locale locale = getResources().getConfiguration().getLocales().get(0);
+            showMetric(R.id.work_metric, R.string.work, planTime(snapshot.durationMs, locale));
+            showMetric(R.id.rest_metric, R.string.rest, planTime(rest, locale));
+            showMetric(R.id.count_metric, R.string.sets_mode, String.format(locale, "%d", count));
+        }
         ((TextView) findViewById(R.id.tone_label)).setText(stopwatch ? R.string.target_tone : R.string.tone);
         for (int i = 0; i < presets.length; i++) {
             Button preset = presets[i];
@@ -208,12 +259,12 @@ public final class MainActivity extends Activity {
                 break;
             case RUNNING:
             case OVERTIME:
-                label = stopAction ? R.string.stop : R.string.pause;
+                label = stopAction ? R.string.stop : sets ? R.string.pause_workout : R.string.pause;
                 iconId = stopAction ? R.drawable.ic_stop : R.drawable.ic_pause;
                 break;
-            case PAUSED: label = snapshot.preparing ? R.string.resume_prep : R.string.resume; break;
+            case PAUSED: label = snapshot.preparing ? R.string.resume_prep : sets ? R.string.resume_workout : R.string.resume; break;
             case FINISHED: label = R.string.repeat; break;
-            default: label = R.string.start;
+            default: label = sets ? R.string.start_workout : R.string.start;
         }
         String action = getString(label);
         SpannableString text = new SpannableString("\uFFFC  " + action);
@@ -222,6 +273,17 @@ public final class MainActivity extends Activity {
         text.setSpan(new ImageSpan(icon, ImageSpan.ALIGN_BASELINE), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         primary.setText(text);
         primary.setContentDescription(action);
+    }
+
+    private void showMetric(int viewId, int title, String value) {
+        View metric = findViewById(viewId);
+        ((TextView) metric.findViewById(R.id.metric_title)).setText(title);
+        ((TextView) metric.findViewById(R.id.metric_value)).setText(value);
+    }
+
+    private String planTime(long millis, Locale locale) {
+        long seconds = millis / 1000;
+        return String.format(locale, "%02d:%02d", seconds / 60, seconds % 60);
     }
 
     private void setAvailable(View view, boolean available) {
