@@ -102,7 +102,11 @@ def run(device):
     pid = device.shell("pidof", PACKAGE)
     assert pid.isdecimal(), f"Unexpected app process ID: {pid}"
     device.shell("run-as", PACKAGE, "kill", "-9", pid)
-    assert PACKAGE not in device.shell("ps", "-A", "-o", "NAME").splitlines()
+    until_exit = time.monotonic() + 2
+    while PACKAGE in device.shell("ps", "-A", "-o", "NAME").splitlines():
+        if time.monotonic() >= until_exit:
+            raise AssertionError("App process still running during preparation")
+        time.sleep(0.1)
     device.wait_for_state("RUNNING", 13)
     device.wait_for_state("OVERTIME", 19)
     device.launch()
