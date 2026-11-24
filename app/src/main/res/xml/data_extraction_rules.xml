@@ -1,0 +1,8 @@
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="countdown.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="countdown.xml"/>
+    </device-transfer>
+</data-extraction-rules>
